@@ -1,20 +1,20 @@
 import { NextResponse } from "next/server";
-import { fetchStockQuotes, DEFAULT_WATCHLIST } from "@/lib/stock-api";
+import { fetchStockQuotes } from "@/lib/stock-api";
 import { getUsdKrwRate } from "@/lib/exchange-rate";
-import { collectNewsForStocks } from "@/lib/news";
+import { FULL_UNIVERSE, filterNotableStocks } from "@/lib/screener";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-// 실시간 주가 + 뉴스 + 환율 테스트 (API 키 불필요)
+// 실시간 60종목 스크리닝 (API 키 불필요)
 export async function GET() {
   try {
-    const [quotes, exchangeRate, newsMap] = await Promise.all([
-      fetchStockQuotes(DEFAULT_WATCHLIST),
+    const [quotes, exchangeRate] = await Promise.all([
+      fetchStockQuotes(FULL_UNIVERSE),
       getUsdKrwRate(),
-      collectNewsForStocks(
-        DEFAULT_WATCHLIST.map((s) => ({ stock_code: s.code, stock_name: s.name }))
-      ),
     ]);
+
+    const notable = filterNotableStocks(quotes);
 
     const result = {
       ok: true,
@@ -23,17 +23,14 @@ export async function GET() {
       stocks: {
         KR: quotes
           .filter((q) => q.market === "KR")
-          .map((q) => ({
-            ...q,
-            news: newsMap.get(q.stock_code) || "",
-          })),
+          .sort((a, b) => b.change_rate - a.change_rate),
         US: quotes
           .filter((q) => q.market === "US")
-          .map((q) => ({
-            ...q,
-            news: newsMap.get(q.stock_code) || "",
-            priceInKRW: Math.round(q.close_price * exchangeRate),
-          })),
+          .sort((a, b) => b.change_rate - a.change_rate),
+      },
+      notable: {
+        topGainers: notable.topGainers.map((q) => `${q.stock_name} ${q.change_rate > 0 ? "+" : ""}${q.change_rate}%`),
+        topLosers: notable.topLosers.map((q) => `${q.stock_name} ${q.change_rate}%`),
       },
       totalStocks: quotes.length,
     };

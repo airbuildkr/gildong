@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyCronSecret } from "@/lib/cron-auth";
 import { supabase } from "@/lib/supabase";
-import { fetchStockQuotes, DEFAULT_WATCHLIST, toYahooSymbol } from "@/lib/stock-api";
+import { fetchStockQuotes, toYahooSymbol } from "@/lib/stock-api";
+import { FULL_UNIVERSE } from "@/lib/screener";
 import { collectNewsForStocks } from "@/lib/news";
 import { getUsdKrwRate } from "@/lib/exchange-rate";
 
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
       { code: string; name: string; yahoo_symbol: string; market: "KR" | "US" }
     >();
 
-    for (const s of DEFAULT_WATCHLIST) {
+    for (const s of FULL_UNIVERSE) {
       allStocksMap.set(s.code, s);
     }
     for (const h of holdings ?? []) {
