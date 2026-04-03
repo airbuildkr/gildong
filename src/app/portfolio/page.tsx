@@ -1,4 +1,10 @@
+import { Metadata } from "next";
 import { getTradeHistory, getPortfolioSummary } from "@/lib/data";
+
+export const metadata: Metadata = {
+  title: "포트폴리오",
+  description: "길동의 현재 보유 종목과 매매 기록을 확인하세요.",
+};
 
 function formatNumber(n: number): string {
   return n.toLocaleString("ko-KR");
@@ -87,7 +93,7 @@ export default async function PortfolioPage() {
             return (
               <div
                 key={trade.id}
-                className="flex items-center justify-between py-3 border-b border-gray-50 text-sm"
+                className="flex flex-wrap items-center justify-between py-3 border-b border-gray-50 text-sm gap-1"
               >
                 <div className="flex items-center gap-3">
                   <span className="text-gray-400 w-10">{dateStr}</span>

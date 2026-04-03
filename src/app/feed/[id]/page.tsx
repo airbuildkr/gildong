@@ -1,6 +1,8 @@
+import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getPost, getPosts } from "@/lib/data";
+import MarkdownContent from "@/components/MarkdownContent";
 
 const typeLabels: Record<string, string> = {
   morning: "아침 한마디",
@@ -11,6 +13,19 @@ const typeLabels: Record<string, string> = {
 export async function generateStaticParams() {
   const posts = await getPosts();
   return posts.map((post) => ({ id: post.id }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: { id: string };
+}): Promise<Metadata> {
+  const post = await getPost(params.id);
+  if (!post) return {};
+  return {
+    title: post.title,
+    description: post.summary,
+  };
 }
 
 export default async function PostDetailPage({
@@ -46,60 +61,7 @@ export default async function PostDetailPage({
 
         <h1 className="text-2xl font-bold mb-6">{post.title}</h1>
 
-        <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed whitespace-pre-line">
-          {post.content.split("\n").map((line, i) => {
-            if (line.startsWith("## ")) {
-              return (
-                <h2 key={i} className="text-lg font-bold mt-8 mb-3 text-gray-900">
-                  {line.replace("## ", "")}
-                </h2>
-              );
-            }
-            if (line.startsWith("| ")) {
-              return (
-                <p key={i} className="font-mono text-xs text-gray-500">
-                  {line}
-                </p>
-              );
-            }
-            if (line.startsWith("- **")) {
-              const parts = line.replace("- **", "").split("**");
-              return (
-                <p key={i} className="ml-2 mb-1">
-                  <strong>{parts[0]}</strong>
-                  {parts.slice(1).join("")}
-                </p>
-              );
-            }
-            if (line.match(/^\*\*.+\*\*$/)) {
-              return (
-                <p key={i} className="font-bold mt-4 mb-1 text-gray-900">
-                  {line.replace(/\*\*/g, "")}
-                </p>
-              );
-            }
-            if (line.match(/^\*\*.+\*\*/)) {
-              const match = line.match(/^\*\*(.+?)\*\*(.*)$/);
-              if (match) {
-                return (
-                  <p key={i} className="mt-3">
-                    <strong>{match[1]}</strong>
-                    {match[2]}
-                  </p>
-                );
-              }
-            }
-            if (line.startsWith("1. ") || line.startsWith("2. ") || line.startsWith("3. ")) {
-              return (
-                <p key={i} className="ml-4 mb-1 text-gray-600">
-                  {line}
-                </p>
-              );
-            }
-            if (line.trim() === "") return <br key={i} />;
-            return <p key={i}>{line}</p>;
-          })}
-        </div>
+        <MarkdownContent content={post.content} />
       </article>
     </>
   );

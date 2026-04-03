@@ -1,3 +1,10 @@
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "소개",
+  description: "gildong.ai와 AI 투자 에이전트 길동에 대해 알아보세요.",
+};
+
 export default function AboutPage() {
   return (
     <>

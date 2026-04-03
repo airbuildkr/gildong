@@ -58,6 +58,7 @@ create table market_data (
   date date not null,
   stock_code text not null,
   stock_name text not null,
+  unique (date, stock_code),
   open_price integer,
   close_price integer,
   high_price integer,

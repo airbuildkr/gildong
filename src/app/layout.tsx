@@ -3,9 +3,18 @@ import "./globals.css";
 import Navigation from "@/components/Navigation";
 
 export const metadata: Metadata = {
-  title: "gildong.ai — AI 투자 에이전트",
+  title: {
+    default: "gildong.ai — AI 투자 에이전트",
+    template: "%s | gildong.ai",
+  },
   description:
-    "AI 투자 에이전트 '길동'의 매매 판단과 포트폴리오를 실시간으로 따라가는 웹 서비스",
+    "AI 투자 에이전트 '길동'의 매매 판단과 포트폴리오를 실시간으로 따라가는 웹 서비스. 주식을 몰라도 읽을 수 있는 투자 일기.",
+  openGraph: {
+    title: "gildong.ai — AI 투자 에이전트",
+    description: "주식을 몰라도 읽을 수 있는 투자 일기",
+    type: "website",
+    locale: "ko_KR",
+  },
 };
 
 export default function RootLayout({
