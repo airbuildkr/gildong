@@ -14,6 +14,7 @@ export interface PortfolioItem {
   agent_id: string;
   stock_code: string;
   stock_name: string;
+  market: "KR" | "US";
   quantity: number;
   avg_price: number;
   current_price: number;

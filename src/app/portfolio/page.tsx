@@ -6,6 +6,13 @@ export const metadata: Metadata = {
   description: "길동의 현재 보유 종목과 매매 기록을 확인하세요.",
 };
 
+function formatPrice(n: number, market?: string): string {
+  if (market === "US") {
+    return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return n.toLocaleString("ko-KR") + "원";
+}
+
 function formatNumber(n: number): string {
   return n.toLocaleString("ko-KR");
 }
@@ -60,7 +67,12 @@ export default async function PortfolioPage() {
               <div key={item.id} className="border border-gray-100 rounded-lg p-4">
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <p className="font-bold">{item.stock_name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold">{item.stock_name}</p>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-400">
+                        {item.market === "US" ? "US" : "KR"}
+                      </span>
+                    </div>
                     <p className="text-xs text-gray-400">{item.quantity}주</p>
                   </div>
                   <span className={`text-sm font-bold ${isItemProfit ? "text-profit" : "text-loss"}`}>
@@ -68,7 +80,7 @@ export default async function PortfolioPage() {
                   </span>
                 </div>
                 <p className="text-xs text-gray-400 mb-2">
-                  평균 {formatNumber(item.avg_price)} → 현재 {formatNumber(item.current_price)}
+                  평균 {formatPrice(item.avg_price, item.market)} → 현재 {formatPrice(item.current_price, item.market)}
                 </p>
                 <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div

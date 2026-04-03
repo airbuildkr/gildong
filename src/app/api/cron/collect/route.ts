@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyCronSecret } from "@/lib/cron-auth";
 import { supabase } from "@/lib/supabase";
+import { fetchStockQuotes, DEFAULT_WATCHLIST, toYahooSymbol } from "@/lib/stock-api";
 
-// 매일 아침 8:30 KST — 시장 데이터 수집
+// 매일 아침 8:30 KST — 시장 데이터 수집 + 보유 종목 현재가 업데이트
 export async function GET(req: NextRequest) {
   if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -11,58 +12,112 @@ export async function GET(req: NextRequest) {
   try {
     const today = new Date().toISOString().split("T")[0];
 
-    // 보유 종목 + 관심 종목 코드 조회
+    // 1. 보유 종목 조회
     const { data: holdings } = await supabase
       .from("portfolio")
-      .select("stock_code, stock_name")
+      .select("id, stock_code, stock_name")
       .eq("agent_id", "gildong-v1");
 
-    const watchlist = [
-      { stock_code: "005930", stock_name: "삼성전자" },
-      { stock_code: "000660", stock_name: "SK하이닉스" },
-      { stock_code: "035720", stock_name: "카카오" },
-      { stock_code: "373220", stock_name: "LG에너지솔루션" },
-      { stock_code: "005380", stock_name: "현대차" },
-    ];
+    // 2. 보유 종목 + 관심 종목 합치기 (중복 제거)
+    const allStocksMap = new Map<
+      string,
+      { code: string; name: string; yahoo_symbol: string; market: "KR" | "US" }
+    >();
 
-    // 보유 종목 + 관심 종목 합치기 (중복 제거)
-    const allStocks = new Map<string, string>();
-    for (const s of [...(holdings ?? []), ...watchlist]) {
-      allStocks.set(s.stock_code, s.stock_name);
+    for (const s of DEFAULT_WATCHLIST) {
+      allStocksMap.set(s.code, s);
+    }
+    for (const h of holdings ?? []) {
+      if (!allStocksMap.has(h.stock_code)) {
+        const isKR = /^\d{6}$/.test(h.stock_code);
+        allStocksMap.set(h.stock_code, {
+          code: h.stock_code,
+          name: h.stock_name,
+          yahoo_symbol: toYahooSymbol(h.stock_code),
+          market: isKR ? "KR" : "US",
+        });
+      }
     }
 
-    // 주가 데이터 수집 (KRX 공공데이터 또는 한국투자증권 API)
-    // TODO: 실제 API 연동 — 현재는 플레이스홀더
-    const marketDataRows: Array<Record<string, unknown>> = [];
-    allStocks.forEach((name, code) => {
-      marketDataRows.push({
+    const allStocks = Array.from(allStocksMap.values());
+
+    // 3. Yahoo Finance에서 시세 조회
+    const quotes = await fetchStockQuotes(allStocks);
+
+    if (quotes.length === 0) {
+      console.warn("[Collect] No quotes fetched");
+      return NextResponse.json({
+        ok: false,
+        error: "No stock quotes fetched",
         date: today,
-        stock_code: code,
-        stock_name: name,
-        open_price: 0,
-        close_price: 0,
-        high_price: 0,
-        low_price: 0,
-        volume: 0,
-        change_rate: 0,
-        news_summary: "",
       });
-    });
+    }
 
-    // Supabase에 저장
-    const { error } = await supabase.from("market_data").upsert(marketDataRows, {
-      onConflict: "date,stock_code",
-    });
+    // 4. market_data 테이블에 저장
+    const marketDataRows = quotes.map((q) => ({
+      date: today,
+      stock_code: q.stock_code,
+      stock_name: q.stock_name,
+      open_price: q.open_price,
+      close_price: q.close_price,
+      high_price: q.high_price,
+      low_price: q.low_price,
+      volume: q.volume,
+      change_rate: q.change_rate,
+      news_summary: "",
+    }));
 
-    if (error) {
-      console.error("[Collect] DB error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    const { error: upsertError } = await supabase
+      .from("market_data")
+      .upsert(marketDataRows, { onConflict: "date,stock_code" });
+
+    if (upsertError) {
+      console.error("[Collect] DB upsert error:", upsertError);
+    }
+
+    // 5. 보유 종목의 현재가 + 수익률 업데이트
+    let updatedHoldings = 0;
+    for (const holding of holdings ?? []) {
+      const quote = quotes.find((q) => q.stock_code === holding.stock_code);
+      if (quote && quote.close_price > 0) {
+        const { data: portfolioItem } = await supabase
+          .from("portfolio")
+          .select("avg_price")
+          .eq("id", holding.id)
+          .single();
+
+        if (portfolioItem) {
+          const profitRate = Number(
+            (
+              ((quote.close_price - portfolioItem.avg_price) /
+                portfolioItem.avg_price) *
+              100
+            ).toFixed(2)
+          );
+
+          await supabase
+            .from("portfolio")
+            .update({
+              current_price: quote.close_price,
+              profit_rate: profitRate,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", holding.id);
+
+          updatedHoldings++;
+        }
+      }
     }
 
     return NextResponse.json({
       ok: true,
-      collected: marketDataRows.length,
       date: today,
+      collected: quotes.length,
+      markets: {
+        KR: quotes.filter((q) => q.market === "KR").length,
+        US: quotes.filter((q) => q.market === "US").length,
+      },
+      updatedHoldings,
     });
   } catch (err) {
     console.error("[Collect] Error:", err);
