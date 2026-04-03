@@ -61,7 +61,41 @@ export async function fetchStockQuotes(
       }
     }
   } catch (err) {
-    console.error("[StockAPI] Fetch error:", err);
+    console.error("[StockAPI] Yahoo v7 error:", err);
+  }
+
+  // Fallback: Yahoo v8 chart API (개별 조회)
+  if (results.length === 0) {
+    console.log("[StockAPI] Trying fallback v8 chart API...");
+    for (const symbol of symbols) {
+      try {
+        const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol.yahoo_symbol)}?range=1d&interval=1d`;
+        const res = await fetch(chartUrl, {
+          headers: { "User-Agent": "Mozilla/5.0" },
+        });
+        if (!res.ok) continue;
+        const data = await res.json();
+        const meta = data?.chart?.result?.[0]?.meta;
+        const indicators = data?.chart?.result?.[0]?.indicators?.quote?.[0];
+        if (meta) {
+          results.push({
+            stock_code: symbol.code,
+            stock_name: symbol.name,
+            open_price: indicators?.open?.[0] ?? meta.chartPreviousClose ?? 0,
+            close_price: meta.regularMarketPrice ?? 0,
+            high_price: indicators?.high?.[0] ?? meta.regularMarketPrice ?? 0,
+            low_price: indicators?.low?.[0] ?? meta.regularMarketPrice ?? 0,
+            volume: indicators?.volume?.[0] ?? 0,
+            change_rate: meta.chartPreviousClose
+              ? Number((((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose) * 100).toFixed(2))
+              : 0,
+            market: symbol.market,
+          });
+        }
+      } catch {
+        console.warn(`[StockAPI] Fallback failed for ${symbol.yahoo_symbol}`);
+      }
+    }
   }
 
   return results;

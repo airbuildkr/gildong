@@ -3,6 +3,7 @@ import { verifyCronSecret } from "@/lib/cron-auth";
 import { supabase } from "@/lib/supabase";
 import { callClaude } from "@/lib/claude";
 import { GILDONG_SYSTEM_PROMPT, DECISION_PROMPT } from "@/lib/agent-prompt";
+import { getUsdKrwRate } from "@/lib/exchange-rate";
 
 // 매일 아침 9:00 KST — AI 판단 + 포트폴리오 업데이트
 export async function GET(req: NextRequest) {
@@ -31,14 +32,25 @@ export async function GET(req: NextRequest) {
           .eq("date", today),
       ]);
 
+    const exchangeRate = await getUsdKrwRate();
+
+    const formatPrice = (price: number, market?: string) =>
+      market === "US" ? `$${price}` : `${price?.toLocaleString()}원`;
+
     const portfolioContext = `
 ## 현재 포트폴리오
 현금: ${cashData?.balance?.toLocaleString() ?? 0}원
+환율: 1 USD = ${exchangeRate.toLocaleString()}원
+
 보유 종목:
-${(holdings ?? []).map((h) => `- ${h.stock_name}(${h.stock_code}): ${h.quantity}주, 평균매수가 ${h.avg_price}원, 현재가 ${h.current_price}원`).join("\n") || "없음"}
+${(holdings ?? []).map((h) => `- [${h.market ?? "KR"}] ${h.stock_name}(${h.stock_code}): ${h.quantity}주, 평균매수가 ${formatPrice(h.avg_price, h.market)}, 현재가 ${formatPrice(h.current_price, h.market)}`).join("\n") || "없음"}
 
 ## 오늘의 시장 데이터
-${(marketData ?? []).map((m) => `- ${m.stock_name}(${m.stock_code}): 종가 ${m.close_price}원, 등락률 ${m.change_rate}%, 뉴스: ${m.news_summary || "없음"}`).join("\n") || "데이터 없음"}
+### 한국
+${(marketData ?? []).filter((m: Record<string, unknown>) => m.market === "KR" || /^\d{6}$/.test(m.stock_code as string)).map((m: Record<string, unknown>) => `- ${m.stock_name}(${m.stock_code}): 종가 ${(m.close_price as number)?.toLocaleString()}원, 등락률 ${m.change_rate}%, 뉴스: ${m.news_summary || "없음"}`).join("\n") || "데이터 없음"}
+
+### 미국
+${(marketData ?? []).filter((m: Record<string, unknown>) => m.market === "US" || !/^\d{6}$/.test(m.stock_code as string)).map((m: Record<string, unknown>) => `- ${m.stock_name}(${m.stock_code}): 종가 $${m.close_price}, 등락률 ${m.change_rate}%, 뉴스: ${m.news_summary || "없음"}`).join("\n") || "데이터 없음"}
 `;
 
     // Claude에 판단 요청

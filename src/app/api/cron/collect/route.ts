@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyCronSecret } from "@/lib/cron-auth";
 import { supabase } from "@/lib/supabase";
 import { fetchStockQuotes, DEFAULT_WATCHLIST, toYahooSymbol } from "@/lib/stock-api";
+import { collectNewsForStocks } from "@/lib/news";
+import { getUsdKrwRate } from "@/lib/exchange-rate";
 
-// 매일 아침 8:30 KST — 시장 데이터 수집 + 보유 종목 현재가 업데이트
+// 매일 아침 8:30 KST — 시장 데이터 + 뉴스 + 환율 수집
 export async function GET(req: NextRequest) {
   if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -15,7 +17,7 @@ export async function GET(req: NextRequest) {
     // 1. 보유 종목 조회
     const { data: holdings } = await supabase
       .from("portfolio")
-      .select("id, stock_code, stock_name")
+      .select("id, stock_code, stock_name, market")
       .eq("agent_id", "gildong-v1");
 
     // 2. 보유 종목 + 관심 종목 합치기 (중복 제거)
@@ -41,8 +43,14 @@ export async function GET(req: NextRequest) {
 
     const allStocks = Array.from(allStocksMap.values());
 
-    // 3. Yahoo Finance에서 시세 조회
-    const quotes = await fetchStockQuotes(allStocks);
+    // 3. 주가 시세 + 뉴스 + 환율을 병렬 조회
+    const [quotes, newsMap, exchangeRate] = await Promise.all([
+      fetchStockQuotes(allStocks),
+      collectNewsForStocks(
+        allStocks.map((s) => ({ stock_code: s.code, stock_name: s.name }))
+      ),
+      getUsdKrwRate(),
+    ]);
 
     if (quotes.length === 0) {
       console.warn("[Collect] No quotes fetched");
@@ -58,13 +66,14 @@ export async function GET(req: NextRequest) {
       date: today,
       stock_code: q.stock_code,
       stock_name: q.stock_name,
+      market: q.market,
       open_price: q.open_price,
       close_price: q.close_price,
       high_price: q.high_price,
       low_price: q.low_price,
       volume: q.volume,
       change_rate: q.change_rate,
-      news_summary: "",
+      news_summary: newsMap.get(q.stock_code) || "",
     }));
 
     const { error: upsertError } = await supabase
@@ -117,6 +126,8 @@ export async function GET(req: NextRequest) {
         KR: quotes.filter((q) => q.market === "KR").length,
         US: quotes.filter((q) => q.market === "US").length,
       },
+      newsCollected: Array.from(newsMap.values()).filter((v) => v.length > 0).length,
+      exchangeRate,
       updatedHoldings,
     });
   } catch (err) {
