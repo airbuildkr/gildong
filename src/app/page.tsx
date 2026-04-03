@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import AgentProfile from "@/components/AgentProfile";
 import FilterTabs from "@/components/FilterTabs";
 import PostCard from "@/components/PostCard";
+import TriggerButton from "@/components/TriggerButton";
 import { Post, PostType } from "@/lib/types";
 import { getPosts } from "@/lib/data";
 
@@ -28,6 +29,8 @@ export default function FeedPage() {
       </header>
 
       <AgentProfile />
+
+      <TriggerButton />
 
       <FilterTabs current={filter} onChange={(key) => setFilter(key as PostType | "all")} />
 
