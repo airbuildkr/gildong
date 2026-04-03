@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getPost, posts } from "@/lib/mock-data";
+import { getPost, getPosts } from "@/lib/data";
 
 const typeLabels: Record<string, string> = {
   morning: "아침 한마디",
@@ -8,16 +8,17 @@ const typeLabels: Record<string, string> = {
   weekly: "주간 리뷰",
 };
 
-export function generateStaticParams() {
+export async function generateStaticParams() {
+  const posts = await getPosts();
   return posts.map((post) => ({ id: post.id }));
 }
 
-export default function PostDetailPage({
+export default async function PostDetailPage({
   params,
 }: {
   params: { id: string };
 }) {
-  const post = getPost(params.id);
+  const post = await getPost(params.id);
 
   if (!post) {
     notFound();
